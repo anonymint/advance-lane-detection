@@ -7,6 +7,7 @@ import random
 from moviepy.editor import VideoFileClip
 from IPython.display import HTML
 from scipy.misc import imsave
+from line import Line
 
 # Camera calibration
 # Read all in of calibration images
@@ -143,7 +144,7 @@ def combine_color_threshold(img):
     mask[((r_channel == 1) & (g_channel == 1)) | ((s_channel == 1) & (l_channel == 1)) ] = 1
     return mask
 
-def pipeline(img, visualize=False):
+def pipeline_color_gradient(img, visualize=False):
     #combine both gradient and color
     binary_gradient = combine_gradient_threshold(img)
     binary_color = combine_color_threshold(img)
@@ -175,10 +176,10 @@ def warp(img):
     #     src = np.float32([[200. , 720, ],[453. , 547.],[835. , 547. ],[1100. , 720. ]])
     #     dst = np.float32([[320., 720],[320. , 590.4],[920., 590.4],[920. , 720]])
     src = np.float32([[570,468],  [714,468], [1106,720], [207,720]])
-    bottom_left = [320,720]
-    bottom_right = [920, 720]
-    top_left = [320, 1]
-    top_right = [920, 1]
+    bottom_left = [300,720]
+    bottom_right = [1000, 720]
+    top_left = [305, 1]
+    top_right = [995, 1]
     dst = np.float32([top_left,top_right,bottom_right, bottom_left])
     img_size = (img.shape[1], img.shape[0])
 
@@ -199,7 +200,7 @@ def slicing_window(binary_warped, left_fit=None, right_fit=None, visualize=False
     leftx_base = np.argmax(histogram[:midpoint])
     rightx_base = np.argmax(histogram[midpoint:]) + midpoint
 
-    nwindows = 9
+    nwindows = 12
     window_height = binary_warped.shape[0]//nwindows
 
     # Identify the x and y positions of all nonzero pixels in the image
@@ -255,10 +256,14 @@ def slicing_window(binary_warped, left_fit=None, right_fit=None, visualize=False
 
     # if left_fit and right_fit provided, just use it!
     else:
-        old_leftfit_x = left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2]
-        old_rightfit_x = right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2]
-        left_lane_inds = ((nonzerox > old_leftfit_x - margin) & (nonzerox < old_leftfit_x + margin))
-        right_lane_inds = ((nonzerox > old_rightfit_x - margin) & (nonzerox < old_rightfit_x + margin))
+        left_lane_inds = ((nonzerox > (left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2] - margin)) &
+                          (nonzerox < (left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2] + margin)))
+        right_lane_inds = ((nonzerox > (right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2] - margin)) &
+                       (nonzerox < (right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2] + margin)))
+        # old_leftfit_x = left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2]
+        # old_rightfit_x = right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2]
+        # left_lane_inds = ((nonzerox > (old_leftfit_x - margin)) & (nonzerox < (old_leftfit_x + margin)))
+        # right_lane_inds = ((nonzerox > (old_rightfit_x - margin)) & (nonzerox < (old_rightfit_x + margin)))
 
     # Extract left and right line pixel positions
     leftx = nonzerox[left_lane_inds]
@@ -277,9 +282,12 @@ def slicing_window(binary_warped, left_fit=None, right_fit=None, visualize=False
         left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
         right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
 
+        # calculate
+        print('mean',np.mean(np.sqrt((left_fitx - right_fitx)**2)))
+
         out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
         out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
-        plt.figure(figsize=(20,10))
+        # plt.figure(figsize=(20,10))
 
         # Generate a polygon to illustrate the search window area
         # And recast the x and y points into usable format for cv2.fillPoly()
@@ -305,43 +313,43 @@ def slicing_window(binary_warped, left_fit=None, right_fit=None, visualize=False
 
     return left_fit, right_fit, leftx[0], rightx[0]
 
-def calculate_radius(base_left, base_right):
-    ploty = np.linspace(0, 719, num=720)# to cover same y-range as image
-    quadratic_coeff = 3e-4 # arbitrary quadratic coefficient
-    # For each y position generate random x position within +/-50 pix
-    # of the line base position in each case (x=200 for left, and x=900 for right)
-    leftx = np.array([base_left + (y**2)*quadratic_coeff + np.random.randint(-50, high=51)
-                      for y in ploty])
-    rightx = np.array([base_right + (y**2)*quadratic_coeff + np.random.randint(-50, high=51)
-                       for y in ploty])
-
-    leftx = leftx[::-1]  # Reverse to match top-to-bottom in y
-    rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
-
-
-    # Fit a second order polynomial to pixel positions in each fake lane line
-    left_fit = np.polyfit(ploty, leftx, 2)
-    left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-    right_fit = np.polyfit(ploty, rightx, 2)
-    right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-
-    # Plot up the fake data
-    mark_size = 3
-    plt.plot(leftx, ploty, 'o', color='red', markersize=mark_size)
-    plt.plot(rightx, ploty, 'o', color='blue', markersize=mark_size)
-    plt.xlim(0, 1280)
-    plt.ylim(0, 720)
-    plt.plot(left_fitx, ploty, color='green', linewidth=3)
-    plt.plot(right_fitx, ploty, color='green', linewidth=3)
-    plt.gca().invert_yaxis() # to visualize as we do the images
-    plt.show()
-
-#     # for printing text
-#     font = cv2.FONT_HERSHEY_SIMPLEX
-#     cv2.putText(final_img, "Curvation is 300 m", (230, 150), font, 2, (255, 255, 255), 2, cv2.LINE_AA)
-#     plt.imshow(final_img)
+# def calculate_radius(base_left, base_right):
+#     ploty = np.linspace(0, 719, num=720)# to cover same y-range as image
+#     quadratic_coeff = 3e-4 # arbitrary quadratic coefficient
+#     # For each y position generate random x position within +/-50 pix
+#     # of the line base position in each case (x=200 for left, and x=900 for right)
+#     leftx = np.array([base_left + (y**2)*quadratic_coeff + np.random.randint(-50, high=51)
+#                       for y in ploty])
+#     rightx = np.array([base_right + (y**2)*quadratic_coeff + np.random.randint(-50, high=51)
+#                        for y in ploty])
+#
+#     leftx = leftx[::-1]  # Reverse to match top-to-bottom in y
+#     rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
+#
+#
+#     # Fit a second order polynomial to pixel positions in each fake lane line
+#     left_fit = np.polyfit(ploty, leftx, 2)
+#     left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+#     right_fit = np.polyfit(ploty, rightx, 2)
+#     right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+#
+#     # Plot up the fake data
+#     mark_size = 3
+#     plt.plot(leftx, ploty, 'o', color='red', markersize=mark_size)
+#     plt.plot(rightx, ploty, 'o', color='blue', markersize=mark_size)
+#     plt.xlim(0, 1280)
+#     plt.ylim(0, 720)
+#     plt.plot(left_fitx, ploty, color='green', linewidth=3)
+#     plt.plot(right_fitx, ploty, color='green', linewidth=3)
+#     plt.gca().invert_yaxis() # to visualize as we do the images
 #     plt.show()
-#     None
+#
+# #     # for printing text
+# #     font = cv2.FONT_HERSHEY_SIMPLEX
+# #     cv2.putText(final_img, "Curvation is 300 m", (230, 150), font, 2, (255, 255, 255), 2, cv2.LINE_AA)
+# #     plt.imshow(final_img)
+# #     plt.show()
+# #     None
 
 def cal_curve(h, w, left_fit, right_fit):
     ploty = np.linspace(0, h-1, num=h)# to cover same y-range as image
@@ -369,7 +377,6 @@ def cal_curve(h, w, left_fit, right_fit):
     left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
     right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
     aver_curverad = (left_curverad + right_curverad)/2
-
     return aver_curverad, left_curverad, right_curverad, offset
 
 
@@ -403,7 +410,7 @@ def overlay_image(original_img, warped, M_inv, left_fit, right_fit, visualize=Fa
 
 def process_image(img):
     img_undistort = cal_undistort(img, objpoints, imgpoints)
-    apply_treshhold = pipeline(img_undistort, visualize=False)
+    apply_treshhold = pipeline_color_gradient(img_undistort, visualize=False)
     warped, M, M_inv = warp(apply_treshhold)
     left_fit, right_fit, left_base, right_base = slicing_window(warped, visualize=False)
 
@@ -421,6 +428,28 @@ def process_image(img):
     # imsave('./save_video_images/final_'+rand+'.jpg',final_img)
     return final_img
 
+def process_video_images(img):
+    img_undistort = cal_undistort(img, objpoints, imgpoints)
+    apply_treshhold = pipeline_color_gradient(img_undistort, visualize=False)
+    warped, M, M_inv = warp(apply_treshhold)
+
+    if (not left_line.detected) and (not right_line.detected):
+        left_fit, right_fit, left_base, right_base = slicing_window(warped, visualize=False)
+    else:
+        left_fit, right_fit, left_base, right_base = slicing_window(warped, left_fit = left_line.best_fit, right_fit = right_line.best_fit, visualize=False)
+
+    left_line.update(left_fit)
+    right_line.update(right_fit)
+
+    aver_curverad, left_curverad, right_curverad, offset = cal_curve(warped.shape[0], warped.shape[1], left_fit, right_fit)
+
+    final_img = overlay_image(img, warped, M_inv, left_fit, right_fit, visualize=False)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(final_img, "Radius of Curvature = {0:.2f}m".format(aver_curverad), (130, 100), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(final_img, "Vehicle is {0:.2f}m offset from center".format(offset), (130, 150), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
+
+    return final_img
+
 def save_image(img):
     rand = str(random.random())[-5:]
     imsave('./save_video_images/'+rand+'.jpg',img)
@@ -435,13 +464,42 @@ def generate_video():
     ##clip1 = VideoFileClip("test_videos/solidWhiteRight.mp4").subclip(0,5)
     # clip1 = VideoFileClip("project_video.mp4").subclip(0,5)
     clip1 = VideoFileClip("project_video.mp4")
-    white_clip = clip1.fl_image(process_image)
+    white_clip = clip1.fl_image(process_video_images)
 
     # white_clip = clip1.fl_image(process_image) #NOTE: this function expects color images!!
     white_clip.write_videofile(white_output, audio=False)
 
 if __name__ == '__main__':
     objpoints, imgpoints = generate_obj_image_points('./camera_cal')
+    left_line = Line()
+    right_line = Line()
 
+    # images = glob.glob('./save_video_images/*.jpg')
+    # for image in images[:1]:
+    #     for _ in range(3):
+    #         img = mpimg.imread(image)
+    #         img_undistort = cal_undistort(img, objpoints, imgpoints)
+    #         apply_treshhold = pipeline_color_gradient(img_undistort, visualize=False)
+    #         warped, M, M_inv = warp(apply_treshhold)
+    #         if (not left_line.detected) and (not right_line.detected):
+    #             print("new detect")
+    #             left_fit, right_fit, left_base, right_base = slicing_window(warped, visualize=True)
+    #         else:
+    #             print("reuse detect best", left_line.best_fit, right_line.best_fit)
+    #             left_fit, right_fit, left_base, right_base = slicing_window(warped, left_fit = left_line.best_fit, right_fit = right_line.best_fit, visualize=True)
+    #
+    #         print('l and r',left_fit, right_fit)
+    #
+    #         left_line.update(left_fit)
+    #         right_line.update(right_fit)
+    #
+    # # for image in images[:]:
+    # #     img = mpimg.imread(image)
+    # #     result = process_image(img)
+    # #     plt.imshow(result)
+    # #     plt.show()
+
+    # left_line = Line()
+    # right_line = Line()
     generate_video()
 
