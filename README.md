@@ -525,7 +525,7 @@ def process_video_images(img):
 
 And I can provide this method to video pipeline `generate_video` method in `advance_lane_finding.py` file.
 
-There is an `advance_lane_finding.mp4` video file showing continuous lane lines detection.
+There is an [advance_lane_finding.mp4](advance-lane-finding.mp4) video file showing continuous lane lines detection.
 
 ### Final thoughts
 
