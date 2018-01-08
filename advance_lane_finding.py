@@ -166,6 +166,7 @@ def pipeline_color_gradient(img, visualize=False):
         ax3.imshow(mask, cmap='gray')
         ax3.set_title('Binary Image', fontsize=50)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
+        plt.show()
 
 
     return mask
@@ -173,17 +174,25 @@ def pipeline_color_gradient(img, visualize=False):
 
 # Unwarp img with offset of 100, that can be changed
 def warp(img):
-    src = np.float32([[570,468],  [714,468], [1106,720], [207,720]])
-    bottom_left = [300,720]
+    '''
+    Warp image to bird eye view
+
+    :param img: binary image
+    :type img: ndarray of 0,1 size (img.shape[0], img.shape[1])
+    :return: Warped image in binary format
+    :rtype: ndarray of 0,1 size (img.shape[0], img.shape[1])
+    '''
+    src = np.float32([[570, 468], [714, 468], [1106, 720], [207, 720]])
+    bottom_left = [300, 720]
     bottom_right = [1000, 720]
     top_left = [305, 1]
     top_right = [995, 1]
-    dst = np.float32([top_left,top_right,bottom_right, bottom_left])
+    dst = np.float32([top_left, top_right, bottom_right, bottom_left])
     img_size = (img.shape[1], img.shape[0])
 
     M = cv2.getPerspectiveTransform(src, dst)
     M_inv = cv2.getPerspectiveTransform(dst, src)
-    warped = cv2.warpPerspective(img, M, img_size, flags = cv2.INTER_LINEAR)
+    warped = cv2.warpPerspective(img, M, img_size, flags=cv2.INTER_LINEAR)
 
     # Return the resulting image and matrix
     return warped, M, M_inv
@@ -310,7 +319,7 @@ def cal_curve(h, w, left_fit, right_fit):
     img_centerx = w/2
     #print('lane width in pixels: {:.2f}'.format(lane_width))
 
-    ym_per_pix = 30/720 # meters per pixel in y dimension
+    ym_per_pix = 3/100 # meters per pixel in y dimension approximate 1 dash line per 100 pixel
     xm_per_pix = 3.7/700 # meters per pixel in x dimension
 
     offset = abs(img_centerx-lane_centerx)*xm_per_pix
@@ -363,51 +372,73 @@ def process_image(img):
     aver_curverad, left_curverad, right_curverad, offset = cal_curve(warped.shape[0], warped.shape[1], left_fit, right_fit)
     # print(aver_curverad, left_curverad, right_curverad, offset)
 
-    final_img = overlay_image(img, warped, M_inv, left_fit, right_fit, visualize=False)
+    final_img = overlay_image(img_undistort, warped, M_inv, left_fit, right_fit, visualize=False)
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(final_img, "Radius of Curvature = {0:.2f}m".format(aver_curverad), (130, 100), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
     cv2.putText(final_img, "Vehicle is {0:.2f}m offset from center".format(offset), (130, 150), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
 
     return final_img
 
+
 def process_video_images(img):
+    '''
+
+    Process series of images so we check if left and right fit provided we can reuse that value
+
+    :param img: color image
+    :type img: RGB
+    :return: image with overlay of lane line detection and curvation value
+    :rtype: RGB
+    '''
     img_undistort = cal_undistort(img, objpoints, imgpoints)
     apply_treshhold = pipeline_color_gradient(img_undistort, visualize=False)
     warped, M, M_inv = warp(apply_treshhold)
 
     if (not left_line.detected) and (not right_line.detected):
-        left_fit, right_fit, l_lane_inds, r_lane_inds = slicing_window(warped, visualize=False)
+        left_fit, right_fit, l_lane_inds, r_lane_inds = \
+            slicing_window(warped, visualize=False)
     else:
-        left_fit, right_fit, l_lane_inds, r_lane_inds = slicing_window(warped, left_fit = left_line.best_fit, right_fit = right_line.best_fit, visualize=False)
+        left_fit, right_fit, l_lane_inds, r_lane_inds = \
+            slicing_window(warped, left_fit=left_line.best_fit,
+                           right_fit=right_line.best_fit,
+                           visualize=False)
 
     left_line.update(left_fit)
     right_line.update(right_fit)
 
-    aver_curverad, left_curverad, right_curverad, offset = cal_curve(warped.shape[0], warped.shape[1], left_fit, right_fit)
+    aver_curverad, left_curverad, right_curverad, offset = cal_curve(
+        warped.shape[0], warped.shape[1], left_fit, right_fit)
 
-    final_img = overlay_image(img, warped, M_inv, left_fit, right_fit, visualize=False)
+    final_img = overlay_image(img_undistort, warped, M_inv, left_fit, right_fit,
+                              visualize=False)
     font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(final_img, "Radius of Curvature = {0:.2f}m".format(aver_curverad), (130, 100), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.putText(final_img, "Vehicle is {0:.2f}m offset from center".format(offset), (130, 150), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(final_img,
+                "Radius of Curvature = {0:.2f}m".format(aver_curverad),
+                (130, 100), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(final_img,
+                "Vehicle is {0:.2f}m offset from center".format(offset),
+                (130, 150), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
 
     return final_img
 
+
 def save_image(img):
     rand = str(random.random())[-5:]
-    imsave('./save_video_images/'+rand+'.jpg',img)
+    imsave('./save_video_images/' + rand + '.jpg', img)
     return img
+
 
 def generate_video():
     white_output = 'advance-lane-finding.mp4'
-    clip1 = VideoFileClip("project_video.mp4").subclip(0,5)
+    clip1 = VideoFileClip("project_video.mp4")
     white_clip = clip1.fl_image(process_video_images)
 
     # white_clip = clip1.fl_image(process_image) #NOTE: this function expects color images!!
     white_clip.write_videofile(white_output, audio=False)
+
 
 if __name__ == '__main__':
     objpoints, imgpoints = generate_obj_image_points('./camera_cal')
     left_line = Line()
     right_line = Line()
     generate_video()
-
