@@ -464,7 +464,7 @@ for image in images[3:6]:
     aver_curverad, left_curverad, right_curverad, offset = cal_curve(warped.shape[0], warped.shape[1], left_fit, right_fit)
     # print(aver_curverad, left_curverad, right_curverad, offset)
 
-    final_img = overlay_image(img, warped, M_inv, left_fit, right_fit, visualize=False)
+    final_img = overlay_image(img_undistort, warped, M_inv, left_fit, right_fit, visualize=False)
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(final_img, "Radius of Curvature = {0:.2f}m".format(aver_curverad), (130, 100), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
     cv2.putText(final_img, "Vehicle is {0:.2f}m offset from center".format(offset), (130, 150), font, 1.8, (255, 255, 255), 2, cv2.LINE_AA)
@@ -513,7 +513,7 @@ def process_video_images(img):
     aver_curverad, left_curverad, right_curverad, offset = cal_curve(warped.shape[0],
     warped.shape[1], left_fit, right_fit)
 
-    final_img = overlay_image(img, warped, M_inv, left_fit, right_fit, visualize=False)
+    final_img = overlay_image(img_undistort, warped, M_inv, left_fit, right_fit, visualize=False)
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(final_img, "Radius of Curvature = {0:.2f}m".format(aver_curverad), (130, 100), font, 1.8,
     (255, 255, 255), 2, cv2.LINE_AA)
